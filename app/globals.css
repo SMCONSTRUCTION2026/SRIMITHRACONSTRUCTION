@@ -1,26 +1,234 @@
 @import "tailwindcss";
 
+/* ==========================================================================
+   Design tokens
+   One warm-white ground, one deep navy ink, two muted greys, one green taken
+   from the SM mark. Nothing else enters the palette.
+   ========================================================================== */
+
+@theme {
+  /* Colour ---------------------------------------------------------------- */
+  --color-ground: #ffffff;
+  --color-ground-soft: #f5f5f1;
+  --color-ground-panel: #fbfbf9;
+  --color-ink: #17233c;
+  --color-ink-soft: #626d7d;
+  --color-ink-faint: #9aa1ab;
+  --color-accent: #3f8a3c;
+  --color-accent-bright: #6cbb52;
+  --color-deep: #13223c;
+  --color-quote: #dce7f0;
+  --color-rule: rgba(23, 35, 60, 0.12);
+  --color-rule-strong: rgba(23, 35, 60, 0.24);
+  --color-rule-invert: rgba(255, 255, 255, 0.16);
+
+  /* Type families --------------------------------------------------------- */
+  --font-display: var(--font-playfair), "Iowan Old Style", Georgia, serif;
+  --font-body: var(--font-geist), "Helvetica Neue", Arial, sans-serif;
+
+  /* Motion ---------------------------------------------------------------- */
+  --ease-editorial: cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Grid ------------------------------------------------------------------
+     One editorial grid for the whole page: a bounded measure, a single
+     horizontal margin, a twelve-column field and one vertical rhythm.
+     Navigation, headlines, imagery and rules all resolve to these. */
+  --container-max: 1440px;
+  /* The masthead's height, shared so the hero can size itself to what is left
+     of the viewport rather than guessing. */
+  --header-h: clamp(4rem, 7.2vw, 6.5rem);
+  --page-x: clamp(1.375rem, 4.6vw, 4.25rem);
+  --grid-gap: clamp(1.5rem, 2.6vw, 2.5rem);
+  --section-y: clamp(2.5rem, 4.2vw, 3.9rem);
+  --section-y-tight: clamp(2.25rem, 3.6vw, 3.25rem);
+
+  /* Type scale ------------------------------------------------------------
+     Fluid but bounded, so the composed line breaks — especially the hero's
+     four lines — hold at every width instead of reflowing. */
+  /* The hero is the one place height matters as much as width: on a short
+     laptop screen the headline gives way so the whole composition still lands
+     inside one viewport. */
+  --text-hero: clamp(2.5rem, min(5.35vw, 9.2svh), 4.8rem);
+  --text-section: clamp(1.75rem, 3.25vw, 2.9rem);
+  --text-band: clamp(1.625rem, 2.7vw, 2.4rem);
+  --text-quote: clamp(1.125rem, 1.5vw, 1.375rem);
+  --text-stat: clamp(1.375rem, 1.95vw, 1.75rem);
+  --text-heading: clamp(1rem, 1.15vw, 1.0625rem);
+  --text-body-lg: clamp(0.9375rem, 1.05vw, 1rem);
+  --text-body: 0.9375rem;
+  --text-small: 0.875rem;
+  --text-fine: 0.8125rem;
+  --text-label: 0.6875rem;
+
+  --lh-display: 1.03;
+  --ls-display: -0.019em;
+  --ls-label: 0.18em;
+
+  color-scheme: light;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+/* ==========================================================================
+   Base
+   ========================================================================== */
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  -webkit-text-size-adjust: 100%;
+  /* Smooth scrolling is Lenis's job — the CSS property fights its rAF loop. */
+  scroll-behavior: auto;
+  /* Sticky header must not sit on top of the section it just jumped to. */
+  scroll-padding-top: clamp(4.5rem, 7vw, 6.5rem);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--color-ground);
+  color: var(--color-ink);
+  font-family: var(--font-body);
+  font-size: var(--text-body);
+  line-height: 1.6;
+  /* Belt and braces against horizontal overflow from full-bleed imagery. */
+  overflow-x: clip;
+}
+
+::selection {
+  background-color: color-mix(in srgb, var(--color-accent) 22%, transparent);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 3px;
+  border-radius: 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* ==========================================================================
+   Editorial primitives
+   ========================================================================== */
+
+@utility page-shell {
+  width: 100%;
+  max-width: var(--container-max);
+  margin-inline: auto;
+  padding-inline: var(--page-x);
+}
+
+/* Aligns a full-bleed section's content to the page grid on the side that
+   still has a margin, while the opposite side runs off the viewport. */
+@utility pad-start {
+  padding-inline-start: max(
+    var(--page-x),
+    calc((100vw - var(--container-max)) / 2 + var(--page-x))
+  );
+}
+
+@utility pad-end {
+  padding-inline-end: max(
+    var(--page-x),
+    calc((100vw - var(--container-max)) / 2 + var(--page-x))
+  );
+}
+
+/* Small letterspaced uppercase mark — eyebrows, metadata, captions. */
+@utility label {
+  font-size: var(--text-label);
+  line-height: 1.5;
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+  font-weight: 500;
+}
+
+@utility display {
+  font-family: var(--font-display);
+  font-weight: 400;
+  line-height: var(--lh-display);
+  letter-spacing: var(--ls-display);
+}
+
+/* The single green accent in the system: a full stop, nothing more. */
+@utility accent-stop {
+  color: var(--color-accent);
+}
+
+/* ==========================================================================
+   Motion
+   Resting states only. Each one is declared here so it is correct on the very
+   first paint — there is nothing to flash — and GSAP animates out of it when
+   ScrollTrigger says the element has entered the frame. Removing `data-anim`
+   (which the motion layer does under `prefers-reduced-motion`) leaves the
+   element at its natural position with no animation attached.
+   ========================================================================== */
+
+[data-anim] {
+  will-change: opacity, transform;
+}
+
+/* The heavy cinematic rise, for a block and for each node of a grid. */
+[data-anim="reveal"],
+[data-anim="stagger"] > * {
+  opacity: 0;
+  transform: translate3d(0, var(--anim-shift, 28px), 0);
+}
+
+[data-anim="stagger"] {
+  will-change: auto;
+}
+
+/* A conductor-thin rule that draws itself left to right. */
+[data-anim="draw"] {
+  transform: scaleX(0);
+  transform-origin: left center;
+}
+
+/* A photograph uncovering from its lower edge while its own scale settles. */
+[data-anim="mask"] {
+  clip-path: inset(0% 0% 100% 0%);
+}
+
+[data-anim="mask"] img {
+  transform: scale(1.12);
+}
+
+/* The opening curtain owns the page while it is up. `:has()` applies this from
+   the first paint, so the lock does not wait for hydration. */
+body:has([data-preloader]) {
+  overflow: hidden;
+}
+
+/* Lenis adds these while it drives the page. */
+html.lenis,
+html.lenis body {
+  height: auto;
+}
+
+.lenis.lenis-smooth {
+  scroll-behavior: auto !important;
+}
+
+.lenis.lenis-stopped {
+  overflow: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-anim],
+  [data-anim] > *,
+  [data-anim="mask"] img {
+    opacity: 1;
+    transform: none;
+    clip-path: none;
+    will-change: auto;
+  }
 }
