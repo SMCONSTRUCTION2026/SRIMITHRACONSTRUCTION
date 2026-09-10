@@ -109,10 +109,18 @@ missing, or Resend rejects the send, the action says so and gives the visitor
 the phone number and inbox instead — it never claims a message was sent when it
 was not.
 
-**Before launch:** verify `srimithraconstruction.com` in Resend and change
-`CONTACT_FROM_EMAIL` to an address on that domain. Resend's shared
-`onboarding@resend.dev` sender works, but mail from a verified domain is far
-less likely to be filtered as spam.
+`srimithraconstruction.com` is verified in Resend, so mail is sent from the
+company's own domain and signed with its DKIM key.
+
+Every accepted send logs its Resend id:
+
+```
+[enquiry] accepted by Resend as 4d61d339-… (… -> contact@srimithraconstruction.com)
+```
+
+Search that id under **Emails** in the Resend dashboard to see what happened to a
+particular enquiry. An id in the log with nothing in the dashboard means the
+dashboard is showing a different Resend team from the one the key belongs to.
 
 ## Hero film
 

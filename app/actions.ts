@@ -119,7 +119,7 @@ export async function submitEnquiry(
   const { text, html } = render(enquiry);
 
   try {
-    const { error } = await new Resend(apiKey).emails.send({
+    const { data, error } = await new Resend(apiKey).emails.send({
       from,
       to: [to],
       // Replying to the notification reaches the enquirer, not the sender.
@@ -132,6 +132,11 @@ export async function submitEnquiry(
     });
 
     if (error) throw new Error(`${error.name}: ${error.message}`);
+
+    // The id is the handle for this message in the Resend dashboard. Without it
+    // in the log there is no way to tell an enquiry that was never sent from one
+    // that was sent and then filtered by the receiving server.
+    console.info(`[enquiry] accepted by Resend as ${data?.id} (${from} -> ${to})`);
   } catch (cause) {
     console.error("[enquiry] delivery failed", cause);
     return { status: "error", message: unreachable() };
