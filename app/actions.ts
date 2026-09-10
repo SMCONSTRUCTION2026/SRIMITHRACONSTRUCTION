@@ -1,7 +1,7 @@
 "use server";
 
 import { Resend } from "resend";
-import { contactDetails, contactSection } from "@/lib/content";
+import { company, contactDetails } from "@/lib/content";
 
 export type EnquiryState = {
   status: "idle" | "sent" | "error";
@@ -36,7 +36,7 @@ function render(enquiry: Enquiry) {
   ];
 
   const text = [
-    `New enquiry from the ${contactDetails.email} website`,
+    `New enquiry from the ${company.name} website`,
     "",
     ...rows.map(([label, value]) => `${label}: ${value}`),
     "",
@@ -108,10 +108,16 @@ export async function submitEnquiry(
   }
 
   const apiKey = process.env.RESEND_API_KEY;
-  const to = process.env.CONTACT_TO_EMAIL;
+  // More than one recipient may be listed, comma separated. A single mailbox is
+  // a single point of failure: if the receiving server quarantines the message,
+  // the enquiry is lost with nothing to show for it.
+  const to = (process.env.CONTACT_TO_EMAIL ?? "")
+    .split(",")
+    .map((address) => address.trim())
+    .filter(Boolean);
   const from = process.env.CONTACT_FROM_EMAIL ?? "onboarding@resend.dev";
 
-  if (!apiKey || !to) {
+  if (!apiKey || to.length === 0) {
     console.warn("[enquiry] RESEND_API_KEY or CONTACT_TO_EMAIL is not set — nothing was sent.");
     return { status: "error", message: unreachable() };
   }
@@ -121,11 +127,11 @@ export async function submitEnquiry(
   try {
     const { data, error } = await new Resend(apiKey).emails.send({
       from,
-      to: [to],
+      to,
       // Replying to the notification reaches the enquirer, not the sender.
       replyTo: enquiry.email,
-      subject: `${contactSection.label}: ${enquiry.name}${
-        enquiry.company ? ` — ${enquiry.company}` : ""
+      subject: `New enquiry — ${enquiry.name}${
+        enquiry.company ? ` (${enquiry.company})` : ""
       }`,
       text,
       html,
@@ -136,7 +142,7 @@ export async function submitEnquiry(
     // The id is the handle for this message in the Resend dashboard. Without it
     // in the log there is no way to tell an enquiry that was never sent from one
     // that was sent and then filtered by the receiving server.
-    console.info(`[enquiry] accepted by Resend as ${data?.id} (${from} -> ${to})`);
+    console.info(`[enquiry] accepted by Resend as ${data?.id} (${from} -> ${to.join(", ")})`);
   } catch (cause) {
     console.error("[enquiry] delivery failed", cause);
     return { status: "error", message: unreachable() };
