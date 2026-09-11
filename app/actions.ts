@@ -108,6 +108,31 @@ function render(enquiry: Enquiry) {
   return { text, html };
 }
 
+/**
+ * The display name on the From header.
+ *
+ * Spelled with the space, the way the company writes it in correspondence.
+ * `company.name` is the site's own one-word setting and is deliberately left
+ * alone, so fixing the sender does not ripple through the page copy.
+ */
+const SENDER_NAME = "Sri Mithra Construction";
+
+/**
+ * The bare address to send from.
+ *
+ * `CONTACT_FROM_EMAIL` holds the address on its own; the display name is added
+ * here. A value still written in the older `Name <address>` form is unwrapped
+ * rather than used whole — wrapping it a second time would produce a malformed
+ * From header and Resend would reject every enquiry, so an environment that has
+ * not been updated yet keeps sending.
+ */
+function senderAddress(configured?: string) {
+  const value = configured?.trim();
+  if (!value) return contactDetails.email;
+  const angled = value.match(/<([^>]+)>/);
+  return (angled ? angled[1] : value).trim();
+}
+
 export async function submitEnquiry(
   _previous: EnquiryState,
   formData: FormData,
@@ -155,8 +180,7 @@ export async function submitEnquiry(
     .filter(Boolean);
   if (to.length === 0) to.push(fallback);
 
-  const from =
-    process.env.CONTACT_FROM_EMAIL?.trim() || `${company.name} <${fallback}>`;
+  const from = `${SENDER_NAME} <${senderAddress(process.env.CONTACT_FROM_EMAIL)}>`;
 
   console.info(
     `[enquiry] env: RESEND_API_KEY=${apiKey ? "set" : "MISSING"} ` +
