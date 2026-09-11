@@ -40,15 +40,6 @@ function submittedAt() {
   }).format(new Date());
 }
 
-/**
- * The notification, in both parts.
- *
- * The HTML is a whole document with a table layout, not a bare fragment: mail
- * clients strip stylesheets and several filters score loose markup as suspect,
- * so the structure here is deliberately the plain old email kind. The text part
- * is not an afterthought either — it is what a phone previews and what a spam
- * filter reads.
- */
 function render(enquiry: Enquiry) {
   const stamp = submittedAt();
   const rows: [string, string][] = [
@@ -117,19 +108,6 @@ function render(enquiry: Enquiry) {
   return { text, html };
 }
 
-/**
- * Handles a project enquiry.
- *
- * Delivery is Resend. `RESEND_API_KEY`, `CONTACT_FROM_EMAIL` and
- * `CONTACT_TO_EMAIL` must all be set; without them the action refuses to claim
- * the message was sent and points the visitor at the phone number and inbox
- * instead — a form that silently drops enquiries is worse than no form.
- *
- * `CONTACT_FROM_EMAIL` must be a mailbox that genuinely exists on the verified
- * domain. Hostinger is the authority for srimithraconstruction.com, so a From
- * address it cannot resolve reads as forgery of its own domain and is filed as
- * spam no matter how well SPF, DKIM and DMARC pass.
- */
 export async function submitEnquiry(
   _previous: EnquiryState,
   formData: FormData,
@@ -168,56 +146,63 @@ export async function submitEnquiry(
   }
 
   const apiKey = process.env.RESEND_API_KEY;
-  // More than one recipient may be listed, comma separated. A single mailbox is
-  // a single point of failure: if the receiving server quarantines the message,
-  // the enquiry is lost with nothing to show for it.
+
+  const fallback = contactDetails.email;
+
   const to = (process.env.CONTACT_TO_EMAIL ?? "")
     .split(",")
     .map((address) => address.trim())
     .filter(Boolean);
-  // No fallback sender. The old default, `onboarding@resend.dev`, is a domain
-  // this company holds no DKIM key for, so the From header would not align and
-  // the message would be filtered — the very failure this form already had.
-  // Refusing and showing the phone number beats sending something unsignable.
-  const from = process.env.CONTACT_FROM_EMAIL?.trim();
+  if (to.length === 0) to.push(fallback);
 
-  if (!apiKey || !from || to.length === 0) {
-    console.warn(
-      "[enquiry] RESEND_API_KEY, CONTACT_FROM_EMAIL or CONTACT_TO_EMAIL is not set — nothing was sent.",
+  const from =
+    process.env.CONTACT_FROM_EMAIL?.trim() || `${company.name} <${fallback}>`;
+
+  console.info(
+    `[enquiry] env: RESEND_API_KEY=${apiKey ? "set" : "MISSING"} ` +
+      `CONTACT_FROM_EMAIL=${process.env.CONTACT_FROM_EMAIL ? "set" : "missing (using fallback)"} ` +
+      `CONTACT_TO_EMAIL=${process.env.CONTACT_TO_EMAIL ? "set" : "missing (using fallback)"}`,
+  );
+
+  if (!apiKey) {
+    console.error(
+      "[enquiry] RESEND_API_KEY is not set in this runtime — nothing was sent.",
     );
     return { status: "error", message: unreachable() };
   }
 
   const { text, html } = render(enquiry);
 
+  console.info(`[enquiry] calling Resend (${from} -> ${to.join(", ")})`);
+
   try {
     const { data, error } = await new Resend(apiKey).emails.send({
       from,
       to,
-      // Replying to the notification reaches the enquirer, not the sender.
       replyTo: enquiry.email,
-      subject: `New  enquiry — ${enquiry.name}`,
+      subject: `New website enquiry — ${enquiry.name}`,
       text,
       html,
     });
 
-    if (error) throw new Error(`${error.name}: ${error.message}`);
+    if (error) {
+      console.error(
+        `[enquiry] Resend rejected the message: ${error.name}: ${error.message}`,
+      );
+      return { status: "error", message: unreachable() };
+    }
 
-    // The id is the handle for this message in the Resend dashboard. Without it
-    // in the log there is no way to tell an enquiry that was never sent from one
-    // that was sent and then filtered by the receiving server.
     console.info(
       `[enquiry] accepted by Resend as ${data?.id} (${from} -> ${to.join(", ")})`,
     );
   } catch (cause) {
-    console.error("[enquiry] delivery failed", cause);
+    console.error("[enquiry] could not reach the Resend API", cause);
     return { status: "error", message: unreachable() };
   }
 
   return { status: "sent" };
 }
 
-/** One wording for every failure — the visitor only needs the way through. */
 function unreachable() {
   return `We could not send that just now. Please email ${contactDetails.email} or call ${contactDetails.phones[0].label}.`;
 }
