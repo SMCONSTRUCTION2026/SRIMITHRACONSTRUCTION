@@ -15,8 +15,12 @@ const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const oneLine = (value: string) => value.replace(/[\r\n]+/g, " ").trim();
 
 const escapeHtml = (value: string) =>
-  value.replace(/[&<>"']/g, (c) =>
-    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!,
+  value.replace(
+    /[&<>"']/g,
+    (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[
+        c
+      ]!,
   );
 
 type Enquiry = {
@@ -116,10 +120,15 @@ function render(enquiry: Enquiry) {
 /**
  * Handles a project enquiry.
  *
- * Delivery is Resend. `RESEND_API_KEY` and `CONTACT_TO_EMAIL` must be set;
- * without them the action refuses to claim the message was sent and points the
- * visitor at the phone number and inbox instead — a form that silently drops
- * enquiries is worse than no form.
+ * Delivery is Resend. `RESEND_API_KEY`, `CONTACT_FROM_EMAIL` and
+ * `CONTACT_TO_EMAIL` must all be set; without them the action refuses to claim
+ * the message was sent and points the visitor at the phone number and inbox
+ * instead — a form that silently drops enquiries is worse than no form.
+ *
+ * `CONTACT_FROM_EMAIL` must be a mailbox that genuinely exists on the verified
+ * domain. Hostinger is the authority for srimithraconstruction.com, so a From
+ * address it cannot resolve reads as forgery of its own domain and is filed as
+ * spam no matter how well SPF, DKIM and DMARC pass.
  */
 export async function submitEnquiry(
   _previous: EnquiryState,
@@ -140,16 +149,22 @@ export async function submitEnquiry(
 
   const errors: EnquiryState["errors"] = {};
   if (enquiry.name.length < 2) errors.name = "Please tell us your name.";
-  if (!EMAIL.test(enquiry.email)) errors.email = "Please enter a valid email address.";
+  if (!EMAIL.test(enquiry.email))
+    errors.email = "Please enter a valid email address.";
   if (enquiry.phone.replace(/\D/g, "").length < 7) {
     errors.phone = "Please enter a phone number we can reach you on.";
   }
   if (enquiry.details.length < 10) {
-    errors.details = "A sentence or two about the project helps us respond well.";
+    errors.details =
+      "A sentence or two about the project helps us respond well.";
   }
 
   if (Object.keys(errors).length > 0) {
-    return { status: "error", message: "Please check the highlighted fields.", errors };
+    return {
+      status: "error",
+      message: "Please check the highlighted fields.",
+      errors,
+    };
   }
 
   const apiKey = process.env.RESEND_API_KEY;
@@ -160,10 +175,16 @@ export async function submitEnquiry(
     .split(",")
     .map((address) => address.trim())
     .filter(Boolean);
-  const from = process.env.CONTACT_FROM_EMAIL ?? "onboarding@resend.dev";
+  // No fallback sender. The old default, `onboarding@resend.dev`, is a domain
+  // this company holds no DKIM key for, so the From header would not align and
+  // the message would be filtered — the very failure this form already had.
+  // Refusing and showing the phone number beats sending something unsignable.
+  const from = process.env.CONTACT_FROM_EMAIL?.trim();
 
-  if (!apiKey || to.length === 0) {
-    console.warn("[enquiry] RESEND_API_KEY or CONTACT_TO_EMAIL is not set — nothing was sent.");
+  if (!apiKey || !from || to.length === 0) {
+    console.warn(
+      "[enquiry] RESEND_API_KEY, CONTACT_FROM_EMAIL or CONTACT_TO_EMAIL is not set — nothing was sent.",
+    );
     return { status: "error", message: unreachable() };
   }
 
@@ -175,9 +196,7 @@ export async function submitEnquiry(
       to,
       // Replying to the notification reaches the enquirer, not the sender.
       replyTo: enquiry.email,
-      subject: `New enquiry — ${enquiry.name}${
-        enquiry.company ? ` (${enquiry.company})` : ""
-      }`,
+      subject: `New  enquiry — ${enquiry.name}`,
       text,
       html,
     });
@@ -187,7 +206,9 @@ export async function submitEnquiry(
     // The id is the handle for this message in the Resend dashboard. Without it
     // in the log there is no way to tell an enquiry that was never sent from one
     // that was sent and then filtered by the receiving server.
-    console.info(`[enquiry] accepted by Resend as ${data?.id} (${from} -> ${to.join(", ")})`);
+    console.info(
+      `[enquiry] accepted by Resend as ${data?.id} (${from} -> ${to.join(", ")})`,
+    );
   } catch (cause) {
     console.error("[enquiry] delivery failed", cause);
     return { status: "error", message: unreachable() };
