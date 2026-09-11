@@ -109,6 +109,82 @@ function render(enquiry: Enquiry) {
 }
 
 /**
+ * The acknowledgement sent back to the enquirer.
+ *
+ * A receipt, not a marketing message. It confirms what arrived, repeats it so
+ * the sender keeps a record once the browser tab is closed, and gives the ways
+ * to reach the office. No tracking pixel, no unsubscribe machinery and nothing
+ * promotional: this is a direct reply to something the person just did, and
+ * dressing it up as a campaign is what would get it filtered.
+ */
+function renderAck(enquiry: Enquiry) {
+  const stamp = submittedAt();
+  const phones = contactDetails.phones.map((phone) => phone.label).join(" / ");
+
+  const text = [
+    `Hello ${enquiry.name},`,
+    "",
+    `Thank you for contacting ${SENDER_NAME}. We have received your enquiry`,
+    "and a member of our team will get back to you shortly.",
+    "",
+    "YOUR ENQUIRY",
+    enquiry.details,
+    "",
+    "If you need to reach us sooner, reply to this email or call us.",
+    "",
+    SENDER_NAME,
+    contactDetails.email,
+    phones,
+    contactDetails.address.join(", "),
+    "",
+    "\u2014",
+    `Received on ${stamp} IST.`,
+  ].join("\n");
+
+  const html = `<!doctype html>
+<html lang="en"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width" /><title>We have received your enquiry</title></head>
+<body style="margin:0;padding:24px 12px;background:#f5f5f1;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:640px;margin:0 auto;border-collapse:collapse;background:#ffffff;border:1px solid #dde1e8;">
+    <tr><td style="padding:24px 32px;background:#13223c;">
+      <div style="font-size:11px;font-weight:700;letter-spacing:0.16em;text-transform:uppercase;color:#ffffff;opacity:0.6;">${escapeHtml(
+        SENDER_NAME,
+      )}</div>
+      <div style="margin-top:6px;font-size:19px;font-weight:600;line-height:1.35;color:#ffffff;">Thank you for your enquiry</div>
+    </td></tr>
+    <tr><td style="padding:28px 32px 0;font-size:15px;line-height:1.65;color:#17233c;">
+      <p style="margin:0 0 14px;">Hello ${escapeHtml(enquiry.name)},</p>
+      <p style="margin:0;">Thank you for contacting ${escapeHtml(
+        SENDER_NAME,
+      )}. We have received your enquiry and a member of our team will get back to you shortly.</p>
+    </td></tr>
+    <tr><td style="padding:24px 32px 4px;">
+      <div style="font-size:11px;font-weight:700;letter-spacing:0.16em;text-transform:uppercase;color:#3f8a3c;">Your enquiry</div>
+      <div style="margin-top:10px;padding-top:14px;border-top:1px solid #dde1e8;font-size:15px;line-height:1.6;color:#17233c;white-space:pre-wrap;">${escapeHtml(
+        enquiry.details,
+      )}</div>
+    </td></tr>
+    <tr><td style="padding:24px 32px 28px;">
+      <div style="padding-top:20px;border-top:1px solid #dde1e8;font-size:13px;line-height:1.75;color:#626d7d;">
+        If you need to reach us sooner, reply to this email or call
+        ${contactDetails.phones
+          .map(
+            (phone) =>
+              `<a href="${phone.href}" style="color:#3f8a3c;font-weight:600;text-decoration:none;">${escapeHtml(phone.label)}</a>`,
+          )
+          .join(" or ")}.
+        <br /><br />
+        <strong style="color:#17233c;">${escapeHtml(SENDER_NAME)}</strong><br />
+        ${escapeHtml(contactDetails.address.join(", "))}<br />
+        Received on ${escapeHtml(stamp)} IST.
+      </div>
+    </td></tr>
+  </table>
+</body></html>`;
+
+  return { text, html };
+}
+
+/**
  * The display name on the From header.
  *
  * Spelled with the space, the way the company writes it in correspondence.
@@ -180,7 +256,8 @@ export async function submitEnquiry(
     .filter(Boolean);
   if (to.length === 0) to.push(fallback);
 
-  const from = `${SENDER_NAME} <${senderAddress(process.env.CONTACT_FROM_EMAIL)}>`;
+  const fromAddress = senderAddress(process.env.CONTACT_FROM_EMAIL);
+  const from = `${SENDER_NAME} <${fromAddress}>`;
 
   console.info(
     `[enquiry] env: RESEND_API_KEY=${apiKey ? "set" : "MISSING"} ` +
@@ -196,11 +273,12 @@ export async function submitEnquiry(
   }
 
   const { text, html } = render(enquiry);
+  const resend = new Resend(apiKey);
 
   console.info(`[enquiry] calling Resend (${from} -> ${to.join(", ")})`);
 
   try {
-    const { data, error } = await new Resend(apiKey).emails.send({
+    const { data, error } = await resend.emails.send({
       from,
       to,
       replyTo: enquiry.email,
@@ -222,6 +300,39 @@ export async function submitEnquiry(
   } catch (cause) {
     console.error("[enquiry] could not reach the Resend API", cause);
     return { status: "error", message: unreachable() };
+  }
+
+  // The enquirer's receipt, sent only once the company's copy is away and kept
+  // in its own try/catch. The notification is the message that must not be
+  // lost; if this one fails the enquiry still reached the office, so it is
+  // logged for us and never turned into an error for the visitor.
+  //
+  // Reply-To is the office's own address — the one the receipt is sent from —
+  // so answering it reaches a person rather than looping back to the enquirer.
+  // Deliberately not CONTACT_TO_EMAIL: that list may carry a second, private
+  // safety-net mailbox, which is not an address to hand out to the public.
+  try {
+    const ack = renderAck(enquiry);
+    const { data, error } = await resend.emails.send({
+      from,
+      to: enquiry.email,
+      replyTo: fromAddress,
+      subject: `We have received your enquiry — ${SENDER_NAME}`,
+      text: ack.text,
+      html: ack.html,
+    });
+
+    if (error) {
+      console.error(
+        `[enquiry] acknowledgement rejected by Resend: ${error.name}: ${error.message}`,
+      );
+    } else {
+      console.info(
+        `[enquiry] acknowledgement accepted by Resend as ${data?.id} (${from} -> ${enquiry.email})`,
+      );
+    }
+  } catch (cause) {
+    console.error("[enquiry] acknowledgement could not be sent", cause);
   }
 
   return { status: "sent" };
