@@ -70,19 +70,6 @@ export function SiteFooter() {
               </li>
             </ul>
           </div>
-
-          <div className="flex flex-col lg:col-span-2">
-            <p className="label text-ground/45">Follow Us</p>
-            <a
-              href={contactDetails.linkedin}
-              rel="noreferrer noopener"
-              target="_blank"
-              aria-label={`${company.name} on LinkedIn`}
-              className="mt-[clamp(1.25rem,2vw,1.75rem)] flex h-10 w-10 items-center justify-center border border-rule-invert text-ground/70 transition-colors duration-300 hover:border-ground/40 hover:text-ground"
-            >
-              <MetaMark name="linkedin" className="h-4 w-4" />
-            </a>
-          </div>
         </div>
 
         <div className="mt-[clamp(1.75rem,2.6vw,2.25rem)] flex flex-col gap-3 border-t border-rule-invert pt-[clamp(1.25rem,1.9vw,1.625rem)] sm:flex-row sm:items-center sm:justify-between">

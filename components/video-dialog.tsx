@@ -35,7 +35,7 @@ export function VideoDialog({ src }: { src?: string }) {
 
   return (
     <>
-      <button
+      {/* <button
         type="button"
         onClick={() => setOpen(true)}
         className="group inline-flex items-center gap-4 text-fine font-medium text-ink"
@@ -44,7 +44,7 @@ export function VideoDialog({ src }: { src?: string }) {
           <PlayMark className="h-4 w-4 translate-x-px" />
         </span>
         Watch Video
-      </button>
+      </button> */}
 
       {open ? (
         <div
